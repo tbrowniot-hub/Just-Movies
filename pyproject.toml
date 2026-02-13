@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MovieRipper"
+version = "0.3.1"
+description = "Queue-driven Windows movie ripping helper"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "MovieRipper Contributors"}]
+
+[project.scripts]
+movieripper = "MovieRipper.__main__:main"
+
+[tool.setuptools]
+packages = ["MovieRipper"]
