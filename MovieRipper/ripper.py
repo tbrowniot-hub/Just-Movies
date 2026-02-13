@@ -1,101 +1,154 @@
 from __future__ import annotations
 import re
-import subprocess, time
+import subprocess
+import time
 from pathlib import Path
 from typing import Optional
+
 
 class MakeMKVError(RuntimeError):
     pass
 
+
 def _run(cmd: list[str], timeout: Optional[int] = None) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
-def _get_info_text(makemkv_cmd: str, disc_spec: str) -> str:
+
+def _parse_drive_letter(disc_spec: str, configured_drive_letter: Optional[str]) -> str:
+    if configured_drive_letter:
+        letter = configured_drive_letter.strip().rstrip('\\').upper()
+        if not letter.endswith(':'):
+            letter += ':'
+        return letter
+    m = re.match(r"drive:([A-Za-z])", str(disc_spec or ""))
+    if m:
+        return f"{m.group(1).upper()}:"
+    return "D:"
+
+
+def _drive_has_media(drive_letter: str) -> bool:
+    path = f"{drive_letter}\\"
+    # On Windows, Test-Path is a practical signal for optical media presence.
+    ps = f"if (Test-Path '{path}') {{ exit 0 }} else {{ exit 1 }}"
     try:
-        p = _run([makemkv_cmd, "-r", "info", disc_spec], timeout=600)
+        p = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        return p.returncode == 0
     except Exception:
-        return ""
-    return (p.stdout or "") + "\n" + (p.stderr or "")
-
-def disc_present(makemkv_cmd: str, disc_spec: str) -> bool:
-    """
-    Returns True only when MakeMKV can open the disc and reports one or more titles.
-
-    IMPORTANT: MakeMKV always prints DRV: lines (drive enumeration) even when there is NO disc.
-    So we key off TCOUNT: > 0 (or CINFO present as a fallback).
-    """
-    txt = _get_info_text(makemkv_cmd, disc_spec)
-    if not txt:
         return False
+
+
+def _get_info_text(makemkv_cmd: str, disc_spec: str, timeout_seconds: int = 20) -> tuple[str, bool]:
+    try:
+        p = _run([makemkv_cmd, "-r", "info", disc_spec], timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return "", True
+    except Exception:
+        return "", False
+    return (p.stdout or "") + "\n" + (p.stderr or ""), False
+
+
+def disc_present(
+    makemkv_cmd: str,
+    disc_spec: str,
+    configured_drive_letter: Optional[str] = None,
+    info_timeout_seconds: int = 20,
+) -> bool:
+    """
+    Returns True when MakeMKV sees titles, or when info timed out but drive media is present.
+    """
+    txt, timed_out = _get_info_text(makemkv_cmd, disc_spec, timeout_seconds=info_timeout_seconds)
 
     m = re.search(r"TCOUNT:(\d+)", txt)
     if m:
         return int(m.group(1)) > 0
 
-    # Fallback: some builds may omit TCOUNT but include CINFO/TINFO when disc is open.
     if "CINFO:" in txt or "TINFO:" in txt:
+        return True
+
+    drive_letter = _parse_drive_letter(disc_spec, configured_drive_letter)
+    if timed_out and _drive_has_media(drive_letter):
         return True
 
     return False
 
-def wait_for_disc(makemkv_cmd: str, disc_spec: str, poll_seconds: int = 3) -> None:
-    while True:
-        if disc_present(makemkv_cmd, disc_spec):
-            return
-        time.sleep(poll_seconds)
 
-def wait_for_disc_removed(makemkv_cmd: str, disc_spec: str, poll_seconds: int = 2, timeout_seconds: int = 0) -> bool:
-    """
-    Wait until no disc is present. If timeout_seconds is 0, wait indefinitely.
-    Returns True if removed, False if timed out.
-    """
+def wait_for_disc(
+    makemkv_cmd: str,
+    disc_spec: str,
+    poll_seconds: int = 3,
+    configured_drive_letter: Optional[str] = None,
+    max_wait_seconds: int = 0,
+) -> bool:
     t0 = time.time()
     while True:
-        if not disc_present(makemkv_cmd, disc_spec):
+        if disc_present(makemkv_cmd, disc_spec, configured_drive_letter=configured_drive_letter):
+            return True
+        if max_wait_seconds and (time.time() - t0) > max_wait_seconds:
+            return False
+        time.sleep(poll_seconds)
+
+
+def wait_for_disc_removed(
+    makemkv_cmd: str,
+    disc_spec: str,
+    poll_seconds: int = 2,
+    timeout_seconds: int = 0,
+    configured_drive_letter: Optional[str] = None,
+) -> bool:
+    t0 = time.time()
+    while True:
+        if not disc_present(makemkv_cmd, disc_spec, configured_drive_letter=configured_drive_letter):
             return True
         if timeout_seconds and (time.time() - t0) > timeout_seconds:
             return False
         time.sleep(poll_seconds)
 
+
 def rip_disc_all_titles(
     makemkv_cmd: str,
     disc_spec: str,
     out_dir: Path,
-    min_length_seconds: int = 600
+    min_length_seconds: int = 600,
 ) -> tuple[int, str, str]:
-    """
-    Rips ALL titles (we will keeper-pick later). Returns (returncode, stdout, stderr).
-    """
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [makemkv_cmd, "-r", "mkv", disc_spec, "all", str(out_dir), f"--minlength={int(min_length_seconds)}"]
     p = _run(cmd)
     return p.returncode, p.stdout, p.stderr
 
-def _drive_letter_from_info(txt: str) -> Optional[str]:
-    # DRV:0,2,999,1,"...","VOLUME_LABEL","D:"
-    m = re.search(r'DRV:\d+,\d+,\d+,\d+,"[^"]*","[^"]*","([^"]+)"', txt)
-    if m:
-        return m.group(1)
-    return None
 
-def try_eject(makemkv_cmd: str, disc_spec: str) -> None:
+def try_eject(
+    drive_letter: str,
+    makemkv_cmd: Optional[str] = None,
+    disc_spec: Optional[str] = None,
+) -> bool:
     """
-    Best-effort eject. We try:
-      1) MakeMKV eject
-      2) Windows Shell eject for the detected drive letter (e.g., D:)
+    Returns True if COM eject command appears successful.
     """
-    # 1) MakeMKV eject
-    try:
-        _run([makemkv_cmd, "-r", "eject", disc_spec], timeout=30)
-    except Exception:
-        pass
+    # Keep optional MakeMKV eject attempt as a first pass.
+    if makemkv_cmd and disc_spec:
+        try:
+            _run([makemkv_cmd, "-r", "eject", disc_spec], timeout=30)
+        except Exception:
+            pass
 
-    # 2) Windows Shell eject (more reliable on some drives)
     try:
-        txt = _get_info_text(makemkv_cmd, disc_spec)
-        drive = _drive_letter_from_info(txt) if txt else None
-        if drive:
-            ps = f"(New-Object -ComObject Shell.Application).NameSpace(17).ParseName('{drive}').InvokeVerb('Eject')"
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=20)
+        ps = (
+            "(New-Object -ComObject Shell.Application)"
+            ".NameSpace(17)"
+            f".ParseName('{drive_letter}')"
+            ".InvokeVerb('Eject')"
+        )
+        p = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return p.returncode == 0
     except Exception:
-        pass
+        return False
