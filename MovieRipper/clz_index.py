@@ -1,5 +1,6 @@
 from __future__ import annotations
 import csv, json, re
+from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Iterable, Optional
@@ -90,7 +91,14 @@ def build_index(csv_path: str, out_path: str) -> dict:
             "search_key": f"{(m.title or '').lower()} {m.year or ''} {m.imdb_id or ''} {m.barcode or ''} {m.clz_index or ''}".strip()
         })
 
-    idx = {"by_imdb": by_imdb, "by_barcode": by_barcode, "search": search}
+    idx = {
+        "schema_version": "movie_index_v2",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "by_imdb": by_imdb,
+        "by_barcode": by_barcode,
+        "search": search,
+        "items": search,
+    }
     Path(out_path).write_text(json.dumps(idx, indent=2), encoding="utf-8")
     return idx
 

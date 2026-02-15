@@ -11,8 +11,14 @@ requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "MovieRipper Contributors"}]
 
+[project.optional-dependencies]
+web = ["fastapi", "uvicorn", "jinja2", "python-multipart"]
+
 [project.scripts]
 movieripper = "MovieRipper.__main__:main"
 
-[tool.setuptools]
-packages = ["MovieRipper"]
+[tool.setuptools.packages.find]
+include = ["MovieRipper*"]
+
+[tool.setuptools.package-data]
+MovieRipper = ["webapp/templates/*.html", "webapp/static/*"]
