@@ -8,11 +8,20 @@ from MovieRipper.webapp.app import create_app
 
 def test_web_status_idle_shape():
     client = TestClient(create_app())
-    res = client.get('/api/status')
+    res = client.get('/api/v1/status')
     assert res.status_code == 200
     payload = res.json()
     assert 'running' in payload
     assert 'step' in payload
+
+
+def test_web_version_shape():
+    client = TestClient(create_app())
+    res = client.get('/api/v1/version')
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload['api_version'] == 'v1'
+    assert 'app_version' in payload
 
 
 def test_web_import_endpoint(tmp_path):
@@ -23,7 +32,7 @@ def test_web_import_endpoint(tmp_path):
     )
     out = tmp_path / 'index.json'
     res = client.post(
-        '/api/import',
+        '/api/v1/import',
         data={'out_path': str(out)},
         files={'csv_file': ('sample.csv', content, 'text/csv')},
     )

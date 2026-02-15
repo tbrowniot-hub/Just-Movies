@@ -3,8 +3,8 @@
 <button id="stop">Stop</button>
 <pre id="status"></pre><pre id="logs"></pre>
 <script>
-start.onsubmit=async(e)=>{e.preventDefault();let fd=new FormData(start);await fetch('/api/run/start',{method:'POST',body:fd})}
-stop.onclick=async()=>{await fetch('/api/run/stop',{method:'POST'})}
-setInterval(async()=>{status.textContent=JSON.stringify(await (await fetch('/api/status')).json(),null,2);logs.textContent=(await (await fetch('/api/logs?tail=40')).json()).lines.join('\n')},1000)
+start.onsubmit=async(e)=>{e.preventDefault();let fd=new FormData(start);await fetch('/api/v1/run/start',{method:'POST',body:fd})}
+stop.onclick=async()=>{await fetch('/api/v1/run/stop',{method:'POST'})}
+setInterval(async()=>{status.textContent=JSON.stringify(await (await fetch('/api/v1/status')).json(),null,2);logs.textContent=(await (await fetch('/api/v1/logs?tail=40')).json()).lines.join('\n')},1000)
 </script>
 </body></html>
