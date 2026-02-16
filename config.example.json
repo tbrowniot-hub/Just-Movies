@@ -1,6 +1,6 @@
 {
-  "rip_prep_root": "C:\\MediaPipeline\\RIP_PREP",
-  "rip_staging_root": "C:\\MediaPipeline\\RIPS_STAGING",
+  "rips_staging_root": "C:\\MediaPipeline\\RIP_PREP",
+  "final_movies_root": "C:\\MediaPipeline\\RIPS_STAGING",
   "makemkv_cmd": "C:\\Program Files (x86)\\MakeMKV\\makemkvcon64.exe",
   "disc_spec": "disc:0",
   "drive_letter": "D:",

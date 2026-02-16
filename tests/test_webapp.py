@@ -68,7 +68,7 @@ def test_run_paths_endpoint(tmp_path):
     queue = tmp_path / 'movie_queue.json'
     config = tmp_path / 'config.json'
     queue.write_text('{"items": []}', encoding='utf-8')
-    config.write_text('{}', encoding='utf-8')
+    config.write_text('{"rips_staging_root": "/tmp/rip", "final_movies_root": "/tmp/final"}', encoding='utf-8')
 
     res = client.post(
         '/api/v1/run/paths',
@@ -82,4 +82,25 @@ def test_run_paths_endpoint(tmp_path):
     payload = res.json()
     assert payload['queue_exists'] is True
     assert payload['config_exists'] is True
+    assert payload['config_valid'] is True
+    assert payload['staging_root'] == '/tmp/rip'
+    assert payload['final_root'] == '/tmp/final'
     assert payload['index_exists'] is False
+
+
+def test_config_load_and_validate_endpoints(tmp_path):
+    client = TestClient(create_app())
+    cfg = tmp_path / 'config.json'
+    cfg.write_text('{"rip_prep_root": "/tmp/rip", "rip_staging_root": "/tmp/final"}', encoding='utf-8')
+
+    load_res = client.post('/api/v1/config/load', json={'path': str(cfg)})
+    assert load_res.status_code == 200
+    payload = load_res.json()
+    assert payload['config_json']['rips_staging_root'] == '/tmp/rip'
+    assert payload['config_json']['final_movies_root'] == '/tmp/final'
+
+    validate_res = client.post('/api/v1/config/validate', json={'config_json': {'rips_staging_root': '', 'final_movies_root': ''}})
+    assert validate_res.status_code == 200
+    validate_payload = validate_res.json()
+    assert validate_payload['valid'] is False
+    assert len(validate_payload['errors']) >= 1

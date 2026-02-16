@@ -2,8 +2,9 @@
 
 All settings are read from `config.json` (copy from `config.example.json`).
 
-- `rip_prep_root`: Temporary rip output root. Each queue item writes all raw MKVs here first.
-- `rip_staging_root`: Final staging root for renamed keeper files.
+- `rips_staging_root`: Temporary rip output root. Each queue item writes all raw MKVs here first.
+- `final_movies_root`: Final root for renamed keeper files.
+- Backward-compatible aliases are accepted: `rip_prep_root` -> `rips_staging_root`, and `rip_staging_root` -> `final_movies_root`.
 - `makemkv_cmd`: Full path (recommended) or command name for `makemkvcon64.exe`.
 - `disc_spec`: MakeMKV disc selector, usually `disc:0`.
 - `makemkv_minlength_seconds`: Passed to MakeMKV `--minlength`.

@@ -2,7 +2,122 @@
 {% block title %}Config · MovieRipper{% endblock %}
 {% block content %}
 <section class="card">
-  <h2>Config API</h2>
-  <p>Use <code>/api/v1/config/save</code> and <code>/api/v1/config/validate</code> from this UI session.</p>
+  <h2>Default locations</h2>
+  <form id="config-form" class="form-grid">
+    <label>Config path
+      <input id="config-path" type="text" value="config.json" />
+    </label>
+    <label>Rip/Staging root (<code>rips_staging_root</code>)
+      <input id="rips-staging-root" type="text" placeholder="C:\\MediaPipeline\\RIP_PREP" />
+    </label>
+    <label>Final root (<code>final_movies_root</code>)
+      <input id="final-movies-root" type="text" placeholder="C:\\MediaPipeline\\RIPS_STAGING" />
+    </label>
+    <div class="row gap">
+      <button id="load-btn" type="button" class="secondary">Load</button>
+      <button id="validate-btn" type="button" class="secondary">Validate</button>
+      <button id="save-btn" type="submit">Save</button>
+    </div>
+  </form>
+  <div id="config-errors" class="error hidden"></div>
+  <div id="config-warnings" class="muted"></div>
+  <p id="config-result" class="muted"></p>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+const configPathInput = document.getElementById('config-path');
+const stagingInput = document.getElementById('rips-staging-root');
+const finalInput = document.getElementById('final-movies-root');
+const errorsBox = document.getElementById('config-errors');
+const warningsBox = document.getElementById('config-warnings');
+const resultBox = document.getElementById('config-result');
+const form = document.getElementById('config-form');
+let currentConfig = {};
+
+function setErrors(lines = []) {
+  if (!lines.length) {
+    errorsBox.classList.add('hidden');
+    errorsBox.textContent = '';
+    return;
+  }
+  errorsBox.textContent = lines.join(' ');
+  errorsBox.classList.remove('hidden');
+}
+
+function setWarnings(lines = []) {
+  warningsBox.textContent = lines.length ? `Warnings: ${lines.join(' | ')}` : '';
+}
+
+function payloadConfig() {
+  return {
+    ...currentConfig,
+    rips_staging_root: stagingInput.value.trim(),
+    final_movies_root: finalInput.value.trim(),
+  };
+}
+
+async function runValidation() {
+  const res = await fetch('/api/v1/config/validate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({config_json: payloadConfig()}),
+  });
+  const payload = await res.json();
+  setErrors(payload.errors || []);
+  setWarnings(payload.warnings || []);
+  resultBox.textContent = payload.valid ? 'Config keys are valid.' : 'Config keys need attention.';
+  return payload;
+}
+
+async function loadConfig() {
+  const res = await fetch('/api/v1/config/load', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: configPathInput.value}),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    setErrors([payload.detail || 'Unable to load config']);
+    setWarnings([]);
+    return;
+  }
+
+  const cfg = payload.config_json || {};
+  currentConfig = cfg;
+  stagingInput.value = cfg.rips_staging_root || '';
+  finalInput.value = cfg.final_movies_root || '';
+  setErrors(payload.validation?.errors || []);
+  setWarnings(payload.validation?.warnings || []);
+  resultBox.textContent = `Loaded ${payload.path}`;
+}
+
+document.getElementById('load-btn').addEventListener('click', loadConfig);
+document.getElementById('validate-btn').addEventListener('click', runValidation);
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const report = await runValidation();
+  if (!report.valid) return;
+
+  const res = await fetch('/api/v1/config/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      path: configPathInput.value,
+      config_json: payloadConfig(),
+    }),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    setErrors([payload.detail || 'Unable to save config']);
+    return;
+  }
+  setErrors([]);
+  setWarnings([]);
+  resultBox.textContent = `Saved ${payload.saved}`;
+});
+
+loadConfig();
+</script>
 {% endblock %}

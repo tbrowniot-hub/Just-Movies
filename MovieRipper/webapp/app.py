@@ -13,9 +13,37 @@ from pydantic import BaseModel
 
 from MovieRipper import __version__
 from MovieRipper.clz_index import build_index
-from MovieRipper.config import CONFIG_NOT_FOUND_MESSAGE, load_config
+from MovieRipper.config import CONFIG_NOT_FOUND_MESSAGE, normalize_config, resolve_path_setting, validate_config
 from MovieRipper.logging_setup import configure_logging
-from MovieRipper.watcher import run_queue
+from MovieRipper.watcher import load_queue, run_queue
+
+
+def _job_folder_preview(queue_path: str, staging_root: str) -> str | None:
+    try:
+        queue = load_queue(queue_path)
+    except Exception:
+        return None
+    if not queue:
+        return None
+
+    item = queue[0]
+    clz_index = item.get("clz_index")
+    title = item.get("title") or "Unknown Title"
+    if clz_index is None:
+        return None
+    folder_name = f"{int(clz_index)}_{title}_<timestamp>"
+    from MovieRipper.pipeline import safe_name
+
+    return str(Path(staging_root) / safe_name(folder_name))
+
+
+def _load_config_from_path(path: str) -> dict:
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    report = validate_config(cfg)
+    return report["normalized_config"]
 
 
 class RunState:
@@ -44,6 +72,10 @@ class ConfigSaveRequest(BaseModel):
 
 class ConfigValidateRequest(BaseModel):
     config_json: dict
+
+
+class ConfigLoadRequest(BaseModel):
+    path: str = "config.json"
 
 
 class IndexLoadRequest(BaseModel):
@@ -135,10 +167,17 @@ def create_app() -> FastAPI:
             if STATE.thread and STATE.thread.is_alive():
                 raise HTTPException(status_code=409, detail="Queue run already in progress")
 
+            resolved_config_path = config_path or "config.json"
             try:
-                cfg, _, _ = load_config(config_path)
+                cfg = _load_config_from_path(resolved_config_path)
             except FileNotFoundError:
                 raise HTTPException(status_code=400, detail=CONFIG_NOT_FOUND_MESSAGE)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in config: {exc}") from exc
+
+            report = validate_config(cfg)
+            if not report["valid"]:
+                raise HTTPException(status_code=400, detail="; ".join(report["errors"]))
 
             STATE.logger, STATE.ring, _ = configure_logging(cfg.get("log_dir"), logger_name="movieripper")
             STATE.stop_event.clear()
@@ -167,11 +206,37 @@ def create_app() -> FastAPI:
         queue_path = Path(req.queue_path)
         config_path = Path(req.config_path)
         index_path = Path(req.index_path)
+
+        config_exists = config_path.exists()
+        config_valid = False
+        config_errors: list[str] = []
+        config_warnings: list[str] = []
+        staging_root = None
+        final_root = None
+
+        if config_exists:
+            try:
+                config_json = json.loads(config_path.read_text(encoding="utf-8"))
+                report = validate_config(config_json)
+                config_valid = bool(report["valid"])
+                config_errors = report["errors"]
+                config_warnings = report["warnings"]
+                staging_root = report["resolved"].get("rips_staging_root")
+                final_root = report["resolved"].get("final_movies_root")
+            except json.JSONDecodeError as exc:
+                config_errors = [f"Invalid JSON in config file: {exc}"]
+
         return {
             "queue_path": str(queue_path),
             "queue_exists": queue_path.exists(),
             "config_path": str(config_path),
-            "config_exists": config_path.exists(),
+            "config_exists": config_exists,
+            "config_valid": config_valid,
+            "config_errors": config_errors,
+            "config_warnings": config_warnings,
+            "staging_root": staging_root,
+            "final_root": final_root,
+            "job_folder_preview": _job_folder_preview(str(queue_path), staging_root) if staging_root and queue_path.exists() else None,
             "index_path": str(index_path),
             "index_exists": index_path.exists(),
         }
@@ -187,19 +252,33 @@ def create_app() -> FastAPI:
     def api_config_save(req: ConfigSaveRequest):
         out = Path(req.path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(req.config_json, indent=2), encoding="utf-8")
-        return {"saved": str(out)}
+
+        normalized = normalize_config(req.config_json)
+        for key in ("rips_staging_root", "final_movies_root"):
+            resolved = resolve_path_setting(req.config_json, key)
+            if resolved:
+                normalized[key] = resolved
+
+        out.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        return {"saved": str(out), "config_json": normalized}
+
+    @app.post("/api/v1/config/load")
+    def api_config_load(req: ConfigLoadRequest):
+        path = Path(req.path)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Config file not found: {path}")
+        try:
+            config_json = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON in config file: {exc}") from exc
+
+        report = validate_config(config_json)
+        return {"path": str(path), "config_json": report["normalized_config"], "validation": report}
 
     @app.post("/api/v1/config/validate")
     def api_config_validate(req: ConfigValidateRequest):
-        config_json = req.config_json
-        checks = {
-            "rip_prep_root_exists": Path(config_json.get("rip_prep_root", "")).exists(),
-            "rip_staging_root_exists": Path(config_json.get("rip_staging_root", "")).exists(),
-            "makemkv_exists": Path(config_json.get("makemkv_cmd", "")).exists(),
-            "staging_parent_writable": Path(config_json.get("rip_staging_root", ".")).parent.exists(),
-        }
-        return {"valid": all(checks.values()), "checks": checks}
+        report = validate_config(req.config_json)
+        return report
 
     @app.post("/api/v1/index/load")
     def api_index_load(req: IndexLoadRequest):
