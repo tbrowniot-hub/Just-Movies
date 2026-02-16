@@ -1,3 +1,163 @@
-<!doctype html><html><body><h2>Queue Builder</h2>
-<p>Use /api/v1/queue/save with JSON body: {items:[...], out_path:"..."}</p>
-</body></html>
+{% extends "_layout.html" %}
+{% block title %}Queue · MovieRipper{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Queue Builder</h2>
+
+  <div class="form-grid">
+    <label>Index path
+      <input id="index-path" type="text" value="MovieRipper/movie_index.json" />
+    </label>
+    <label><input id="eligible-only" type="checkbox" checked /> Eligible only (has IMDb + CLZ index)</label>
+    <button id="load-index">Load Index</button>
+  </div>
+
+  <p class="muted" id="index-stats">No index loaded.</p>
+
+  <label>Search
+    <input id="search-box" type="text" placeholder="title, year, imdb_id, clz_index" />
+  </label>
+
+  <table>
+    <thead><tr><th>Title</th><th>Year</th><th>CLZ</th><th>IMDb</th><th></th></tr></thead>
+    <tbody id="results-body"></tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3>Queue</h3>
+  <div class="row gap">
+    <button id="clear-queue" class="secondary">Clear Queue</button>
+  </div>
+  <table>
+    <thead><tr><th>Title</th><th>Year</th><th>CLZ</th><th>IMDb</th><th>Actions</th></tr></thead>
+    <tbody id="queue-body"></tbody>
+  </table>
+
+  <div class="form-grid">
+    <label>Queue output path
+      <input id="queue-out" type="text" value="MovieRipper/movie_queue.json" />
+    </label>
+    <button id="save-queue">Save Queue</button>
+  </div>
+
+  <div id="queue-status" class="muted"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+let allItems = [];
+let filteredItems = [];
+let queueItems = [];
+
+const resultsBody = document.getElementById('results-body');
+const queueBody = document.getElementById('queue-body');
+const stats = document.getElementById('index-stats');
+const queueStatus = document.getElementById('queue-status');
+
+function keyFor(item) {
+  return String(item.clz_index ?? `imdb:${item.imdb_id ?? item.title}`);
+}
+
+function renderResults() {
+  const q = document.getElementById('search-box').value.trim().toLowerCase();
+  filteredItems = allItems.filter((item) => {
+    const haystack = `${item.title || ''} ${item.year || ''} ${item.imdb_id || ''} ${item.clz_index || ''}`.toLowerCase();
+    return !q || haystack.includes(q);
+  });
+
+  resultsBody.innerHTML = '';
+  for (const item of filteredItems.slice(0, 500)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${item.title || ''}</td><td>${item.year || ''}</td><td>${item.clz_index ?? ''}</td><td>${item.imdb_id || ''}</td><td><button>Add</button></td>`;
+    tr.querySelector('button').onclick = () => {
+      const clz = item.clz_index;
+      if (clz == null || queueItems.some((qItem) => qItem.clz_index === clz)) {
+        return;
+      }
+      queueItems.push(item);
+      renderQueue();
+    };
+    resultsBody.appendChild(tr);
+  }
+}
+
+function renderQueue() {
+  queueBody.innerHTML = '';
+  queueItems.forEach((item, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${item.title || ''}</td>
+      <td>${item.year || ''}</td>
+      <td>${item.clz_index ?? ''}</td>
+      <td>${item.imdb_id || ''}</td>
+      <td>
+        <button data-act="up">Up</button>
+        <button data-act="down">Down</button>
+        <button data-act="remove" class="danger">Remove</button>
+      </td>`;
+
+    tr.querySelector('[data-act="up"]').onclick = () => {
+      if (idx === 0) return;
+      [queueItems[idx - 1], queueItems[idx]] = [queueItems[idx], queueItems[idx - 1]];
+      renderQueue();
+    };
+    tr.querySelector('[data-act="down"]').onclick = () => {
+      if (idx === queueItems.length - 1) return;
+      [queueItems[idx + 1], queueItems[idx]] = [queueItems[idx], queueItems[idx + 1]];
+      renderQueue();
+    };
+    tr.querySelector('[data-act="remove"]').onclick = () => {
+      queueItems.splice(idx, 1);
+      renderQueue();
+    };
+    queueBody.appendChild(tr);
+  });
+  queueStatus.textContent = `Queue items: ${queueItems.length}`;
+}
+
+document.getElementById('load-index').onclick = async () => {
+  queueStatus.textContent = '';
+  const res = await fetch('/api/v1/index/load', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      path: document.getElementById('index-path').value,
+      eligible_only: document.getElementById('eligible-only').checked,
+    }),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    stats.textContent = payload.detail || 'Failed to load index';
+    return;
+  }
+  allItems = payload.items || [];
+  stats.textContent = `Loaded ${payload.loaded_count} of ${payload.total}. Missing IMDb in source: ${payload.missing_imdb_count}.`;
+  renderResults();
+};
+
+document.getElementById('search-box').addEventListener('input', renderResults);
+
+document.getElementById('save-queue').onclick = async () => {
+  const outPath = document.getElementById('queue-out').value;
+  const res = await fetch('/api/v1/queue/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({items: queueItems, out_path: outPath}),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    queueStatus.textContent = payload.detail || 'Save failed';
+    return;
+  }
+  queueStatus.textContent = `Saved ${payload.saved} items to ${payload.out_path}`;
+};
+
+document.getElementById('clear-queue').onclick = () => {
+  if (confirm('Clear all queue items?')) {
+    queueItems = [];
+    renderQueue();
+  }
+};
+</script>
+{% endblock %}

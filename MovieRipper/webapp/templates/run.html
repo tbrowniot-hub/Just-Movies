@@ -1,10 +1,85 @@
-<!doctype html><html><body><h2>Run Queue</h2>
-<form id="start"><input name="queue_path" placeholder="movie_queue.json"><input name="config_path" placeholder="config.json"><button>Start</button></form>
-<button id="stop">Stop</button>
-<pre id="status"></pre><pre id="logs"></pre>
+{% extends "_layout.html" %}
+{% block title %}Run · MovieRipper{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Run Queue</h2>
+  <form id="start-form" class="form-grid">
+    <label>Queue path
+      <input id="queue-path" name="queue_path" value="MovieRipper/movie_queue.json" />
+    </label>
+    <label>Config path
+      <input id="config-path" name="config_path" value="config.json" />
+    </label>
+    <div class="row gap">
+      <button id="start-btn" type="submit">Start</button>
+      <button id="stop-btn" type="button" class="danger">Stop</button>
+    </div>
+  </form>
+
+  <p id="big-status" class="badge idle">Idle</p>
+  <p id="run-meta" class="muted">No active run.</p>
+</section>
+
+<section class="card">
+  <div class="row gap">
+    <h3>Logs</h3>
+    <label><input id="pause-scroll" type="checkbox" /> Pause autoscroll</label>
+  </div>
+  <pre id="logs-box" class="logs"></pre>
+</section>
+{% endblock %}
+{% block scripts %}
 <script>
-start.onsubmit=async(e)=>{e.preventDefault();let fd=new FormData(start);await fetch('/api/v1/run/start',{method:'POST',body:fd})}
-stop.onclick=async()=>{await fetch('/api/v1/run/stop',{method:'POST'})}
-setInterval(async()=>{status.textContent=JSON.stringify(await (await fetch('/api/v1/status')).json(),null,2);logs.textContent=(await (await fetch('/api/v1/logs?tail=40')).json()).lines.join('\n')},1000)
+const startForm = document.getElementById('start-form');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const bigStatus = document.getElementById('big-status');
+const runMeta = document.getElementById('run-meta');
+const logsBox = document.getElementById('logs-box');
+const pauseScroll = document.getElementById('pause-scroll');
+
+startForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(startForm);
+  const res = await fetch('/api/v1/run/start', {method: 'POST', body: fd});
+  if (!res.ok) {
+    const payload = await res.json();
+    runMeta.textContent = payload.detail || 'Unable to start';
+  }
+};
+
+stopBtn.onclick = async () => {
+  await fetch('/api/v1/run/stop', {method: 'POST'});
+};
+
+function updateButtons(status) {
+  const running = !!status.running;
+  startBtn.disabled = running;
+  stopBtn.disabled = !running;
+}
+
+setInterval(async () => {
+  const status = await (await fetch('/api/v1/status')).json();
+  const logs = await (await fetch('/api/v1/logs?tail=200')).json();
+
+  const step = status.step || 'idle';
+  const running = !!status.running;
+  bigStatus.textContent = running ? `Running: ${step}` : `Idle: ${step}`;
+  bigStatus.className = `badge ${running ? 'running' : 'idle'}`;
+
+  const current = status.current || '-';
+  const total = status.total || '-';
+  const title = status.title || '-';
+  const clz = status.clz_index || '-';
+  const imdb = status.imdb_id || '-';
+  runMeta.textContent = `Queue: ${document.getElementById('queue-path').value} | Config: ${document.getElementById('config-path').value} | Item ${current}/${total} | ${title} | CLZ ${clz} | IMDb ${imdb}`;
+
+  logsBox.textContent = (logs.lines || []).join('\n');
+  if (!pauseScroll.checked) {
+    logsBox.scrollTop = logsBox.scrollHeight;
+  }
+
+  updateButtons(status);
+}, 1000);
 </script>
-</body></html>
+{% endblock %}

@@ -1,9 +1,13 @@
-<!doctype html><html><body>
-<h1>MovieRipper Web</h1>
-<ul>
-<li><a href="/import">Import</a></li>
-<li><a href="/queue">Queue</a></li>
-<li><a href="/run">Run</a></li>
-<li><a href="/config">Config</a></li>
-</ul>
-</body></html>
+{% extends "_layout.html" %}
+{% block title %}Home · MovieRipper{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Local Control Panel</h2>
+  <p>Use the tabs above to import your catalog, build a queue, run jobs, and validate configuration.</p>
+  <ul>
+    <li><strong>Import:</strong> build index JSON from MASTEREXPORT CSV.</li>
+    <li><strong>Queue:</strong> search, add, reorder, and save queue files.</li>
+    <li><strong>Run:</strong> start/stop queue processing with live status and logs.</li>
+  </ul>
+</section>
+{% endblock %}
