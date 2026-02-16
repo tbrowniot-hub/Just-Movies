@@ -10,6 +10,14 @@
     <label>Config path
       <input id="config-path" name="config_path" value="config.json" />
     </label>
+
+    <div class="card">
+      <p><strong>Staging root:</strong> <code id="staging-root">(not loaded)</code> <button id="copy-staging" type="button" class="secondary">Copy path</button></p>
+      <p><strong>Final root:</strong> <code id="final-root">(not loaded)</code> <button id="copy-final" type="button" class="secondary">Copy path</button></p>
+      <p id="job-preview" class="muted">Job folder preview: (unavailable)</p>
+      <p id="run-warnings" class="muted"></p>
+    </div>
+
     <div id="run-error" class="error hidden"></div>
     <div class="row gap">
       <button id="start-btn" type="submit">Start</button>
@@ -41,11 +49,19 @@ const pauseScroll = document.getElementById('pause-scroll');
 const queuePathInput = document.getElementById('queue-path');
 const configPathInput = document.getElementById('config-path');
 const runError = document.getElementById('run-error');
+const runWarnings = document.getElementById('run-warnings');
+const stagingRoot = document.getElementById('staging-root');
+const finalRoot = document.getElementById('final-root');
+const jobPreview = document.getElementById('job-preview');
+const copyStaging = document.getElementById('copy-staging');
+const copyFinal = document.getElementById('copy-final');
 
 const LS_QUEUE_PATH = 'movieripper.run.queue_path';
 const LS_CONFIG_PATH = 'movieripper.run.config_path';
 const LS_INDEX_PATH = 'movieripper.queue.index_path';
 const DEFAULT_INDEX_PATH = 'MovieRipper/movie_index.json';
+
+let latestPathPayload = null;
 
 function readStoredValue(key, fallback) {
   const value = localStorage.getItem(key);
@@ -60,6 +76,15 @@ function setError(message) {
     runError.textContent = '';
     runError.classList.add('hidden');
   }
+}
+
+function applyConfigDetails(payload) {
+  latestPathPayload = payload;
+  stagingRoot.textContent = payload?.staging_root || '(missing)';
+  finalRoot.textContent = payload?.final_root || '(missing)';
+  jobPreview.textContent = `Job folder preview: ${payload?.job_folder_preview || '(unavailable)'}`;
+  const warnings = payload?.config_warnings || [];
+  runWarnings.textContent = warnings.length ? `Warnings: ${warnings.join(' | ')}` : '';
 }
 
 async function validatePaths() {
@@ -78,8 +103,14 @@ async function validatePaths() {
   }
 
   const payload = await res.json();
+  applyConfigDetails(payload);
+
   if (!payload.config_exists) {
     setError(`Config file not found at ${payload.config_path}. Create config.json from config.example.json, then try again.`);
+    return false;
+  }
+  if (!payload.config_valid) {
+    setError((payload.config_errors || ['Config is invalid']).join(' '));
     return false;
   }
   if (!payload.queue_exists) {
@@ -91,10 +122,28 @@ async function validatePaths() {
   return true;
 }
 
+async function copyText(text) {
+  if (!text || text === '(missing)') return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (err) {
+    setError(`Clipboard copy failed: ${err}`);
+  }
+}
+
+copyStaging.addEventListener('click', () => copyText(stagingRoot.textContent));
+copyFinal.addEventListener('click', () => copyText(finalRoot.textContent));
+
 queuePathInput.value = readStoredValue(LS_QUEUE_PATH, queuePathInput.value);
 configPathInput.value = readStoredValue(LS_CONFIG_PATH, configPathInput.value);
-queuePathInput.addEventListener('input', () => localStorage.setItem(LS_QUEUE_PATH, queuePathInput.value));
-configPathInput.addEventListener('input', () => localStorage.setItem(LS_CONFIG_PATH, configPathInput.value));
+queuePathInput.addEventListener('input', async () => {
+  localStorage.setItem(LS_QUEUE_PATH, queuePathInput.value);
+  await validatePaths();
+});
+configPathInput.addEventListener('input', async () => {
+  localStorage.setItem(LS_CONFIG_PATH, configPathInput.value);
+  await validatePaths();
+});
 
 startForm.onsubmit = async (e) => {
   e.preventDefault();
@@ -121,7 +170,7 @@ stopBtn.onclick = async () => {
 
 function updateButtons(status) {
   const running = !!status.running;
-  startBtn.disabled = running;
+  startBtn.disabled = running || !latestPathPayload?.config_exists || !latestPathPayload?.config_valid;
   stopBtn.disabled = !running;
 }
 
@@ -148,5 +197,7 @@ setInterval(async () => {
 
   updateButtons(status);
 }, 1000);
+
+validatePaths();
 </script>
 {% endblock %}

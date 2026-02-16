@@ -5,7 +5,14 @@ from pathlib import Path
 
 from . import __version__
 from .clz_index import build_index, load_index
-from .config import CONFIG_NOT_FOUND_MESSAGE, init_config, load_config, resolve_config_path
+from .config import (
+    CONFIG_NOT_FOUND_MESSAGE,
+    init_config,
+    load_config,
+    normalize_config,
+    resolve_config_path,
+    validate_config,
+)
 from .logging_setup import configure_logging
 from .queue_ui import QueueBuilderApp
 from .watcher import run_queue
@@ -13,20 +20,28 @@ from .watcher import run_queue
 
 def smoke_test(config_path: str | None) -> int:
     cfg, resolved, reason = load_config(config_path)
-    rip_prep_root = Path(cfg["rip_prep_root"])
-    rip_staging_root = Path(cfg["rip_staging_root"])
-    makemkv_cmd = Path(cfg.get("makemkv_cmd", "makemkvcon64.exe"))
+    report = validate_config(cfg)
+    normalized = normalize_config(cfg)
+    rip_prep_root = Path(normalized["rips_staging_root"])
+    rip_staging_root = Path(normalized["final_movies_root"])
+    makemkv_cmd = Path(normalized.get("makemkv_cmd", "makemkvcon64.exe"))
 
     print(f"Config: {resolved} ({reason})")
     print(f"MovieRipper loaded from: {Path(__file__).resolve()}")
 
-    ok = True
+    ok = not report["errors"]
     for p in (rip_prep_root, rip_staging_root):
         if p.exists():
             print(f"OK path exists: {p}")
         else:
             ok = False
             print(f"MISSING path: {p}")
+
+    for warning in report["warnings"]:
+        print(f"WARNING: {warning}")
+
+    for error in report["errors"]:
+        print(f"ERROR: {error}")
 
     if makemkv_cmd.exists():
         print(f"OK MakeMKV exists: {makemkv_cmd}")

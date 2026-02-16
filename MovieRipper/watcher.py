@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Event
 from typing import Callable
 
+from .config import normalize_config
 from .pipeline import Job, process_rip_folder_to_staging, safe_name, write_job
 from .ripper import disc_present, rip_disc_all_titles, try_eject, wait_for_disc, wait_for_disc_removed
 
@@ -51,8 +52,9 @@ def run_queue(
     def should_stop() -> bool:
         return bool(stop_event and stop_event.is_set())
 
-    rip_prep_root = Path(cfg["rip_prep_root"])
-    rip_staging_root = Path(cfg["rip_staging_root"])
+    resolved_cfg = normalize_config(cfg)
+    rip_prep_root = Path(resolved_cfg["rips_staging_root"])
+    rip_staging_root = Path(resolved_cfg["final_movies_root"])
     makemkv_cmd = cfg.get("makemkv_cmd", "makemkvcon64.exe")
     disc_spec = cfg.get("disc_spec", "disc:0")
     drive_letter = cfg.get("drive_letter", "D:")
@@ -74,8 +76,8 @@ def run_queue(
         return
 
     emit(f"MovieRipper queue run starting ({len(queue)} items)")
-    emit(f"RIP_PREP:      {rip_prep_root}")
-    emit(f"RIPS_STAGING:  {rip_staging_root}")
+    emit(f"Rips staging root: {rip_prep_root}")
+    emit(f"Final movies root: {rip_staging_root}")
     emit(f"MakeMKV:       {makemkv_cmd} ({disc_spec})")
     emit(f"Drive letter:  {drive_letter}")
 

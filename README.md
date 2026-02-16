@@ -19,7 +19,7 @@ python -m MovieRipper build-queue --index ".\MovieRipper\movie_index.json" --out
 python -m MovieRipper run-queue   --queue ".\MovieRipper\movie_queue.json" --config ".\config.json"
 ```
 
-Behavior remains: rip to `RIP_PREP`, wait for idle finalization, then move/rename to `RIPS_STAGING`.
+Behavior remains: rip to a staging root, wait for idle finalization, then move/rename to a final root.
 
 ## Setup
 
@@ -34,6 +34,21 @@ movieripper --help
 ```
 
 `python -m MovieRipper ...` continues to work.
+
+
+## Default locations
+
+`config.json` now supports explicit defaults for the two pipeline stages:
+
+- `rips_staging_root`: where each rip job folder is created and MakeMKV writes initial output.
+- `final_movies_root`: where the final keeper MKV is moved after successful processing.
+
+Backward-compatible aliases are still accepted when loading config:
+
+- `rip_prep_root` is treated as `rips_staging_root`
+- `rip_staging_root` is treated as `final_movies_root`
+
+CLI path arguments keep existing behavior and still override defaults when provided.
 
 ## Config
 
