@@ -51,29 +51,35 @@ class IndexLoadRequest(BaseModel):
     eligible_only: bool = True
 
 
+class RunPathCheckRequest(BaseModel):
+    queue_path: str = "MovieRipper/movie_queue.json"
+    config_path: str = "config.json"
+    index_path: str = "MovieRipper/movie_index.json"
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="MovieRipper Web")
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        return TEMPLATES.TemplateResponse("home.html", {"request": request})
+        return TEMPLATES.TemplateResponse(request, "home.html", {})
 
     @app.get("/import", response_class=HTMLResponse)
     def import_page(request: Request):
-        return TEMPLATES.TemplateResponse("import.html", {"request": request})
+        return TEMPLATES.TemplateResponse(request, "import.html", {})
 
     @app.get("/queue", response_class=HTMLResponse)
     def queue_page(request: Request):
-        return TEMPLATES.TemplateResponse("queue.html", {"request": request})
+        return TEMPLATES.TemplateResponse(request, "queue.html", {})
 
     @app.get("/run", response_class=HTMLResponse)
     def run_page(request: Request):
-        return TEMPLATES.TemplateResponse("run.html", {"request": request})
+        return TEMPLATES.TemplateResponse(request, "run.html", {})
 
     @app.get("/config", response_class=HTMLResponse)
     def config_page(request: Request):
-        return TEMPLATES.TemplateResponse("config.html", {"request": request})
+        return TEMPLATES.TemplateResponse(request, "config.html", {})
 
     @app.get("/api/v1/version")
     def api_version():
@@ -155,6 +161,20 @@ def create_app() -> FastAPI:
             STATE.thread = t
             t.start()
         return {"started": True}
+
+    @app.post("/api/v1/run/paths")
+    def api_run_paths(req: RunPathCheckRequest):
+        queue_path = Path(req.queue_path)
+        config_path = Path(req.config_path)
+        index_path = Path(req.index_path)
+        return {
+            "queue_path": str(queue_path),
+            "queue_exists": queue_path.exists(),
+            "config_path": str(config_path),
+            "config_exists": config_path.exists(),
+            "index_path": str(index_path),
+            "index_exists": index_path.exists(),
+        }
 
     @app.post("/api/v1/run/stop")
     def api_run_stop():

@@ -10,6 +10,7 @@
     <label>Config path
       <input id="config-path" name="config_path" value="config.json" />
     </label>
+    <div id="run-error" class="error hidden"></div>
     <div class="row gap">
       <button id="start-btn" type="submit">Start</button>
       <button id="stop-btn" type="button" class="danger">Stop</button>
@@ -37,13 +38,79 @@ const bigStatus = document.getElementById('big-status');
 const runMeta = document.getElementById('run-meta');
 const logsBox = document.getElementById('logs-box');
 const pauseScroll = document.getElementById('pause-scroll');
+const queuePathInput = document.getElementById('queue-path');
+const configPathInput = document.getElementById('config-path');
+const runError = document.getElementById('run-error');
+
+const LS_QUEUE_PATH = 'movieripper.run.queue_path';
+const LS_CONFIG_PATH = 'movieripper.run.config_path';
+const LS_INDEX_PATH = 'movieripper.queue.index_path';
+const DEFAULT_INDEX_PATH = 'MovieRipper/movie_index.json';
+
+function readStoredValue(key, fallback) {
+  const value = localStorage.getItem(key);
+  return value && value.trim() ? value : fallback;
+}
+
+function setError(message) {
+  if (message) {
+    runError.textContent = message;
+    runError.classList.remove('hidden');
+  } else {
+    runError.textContent = '';
+    runError.classList.add('hidden');
+  }
+}
+
+async function validatePaths() {
+  const res = await fetch('/api/v1/run/paths', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      queue_path: queuePathInput.value,
+      config_path: configPathInput.value,
+      index_path: readStoredValue(LS_INDEX_PATH, DEFAULT_INDEX_PATH),
+    }),
+  });
+  if (!res.ok) {
+    setError('Unable to verify file paths right now.');
+    return false;
+  }
+
+  const payload = await res.json();
+  if (!payload.config_exists) {
+    setError(`Config file not found at ${payload.config_path}. Create config.json from config.example.json, then try again.`);
+    return false;
+  }
+  if (!payload.queue_exists) {
+    setError(`Queue file not found at ${payload.queue_path}. Build and save a queue from the Queue page first.`);
+    return false;
+  }
+
+  setError('');
+  return true;
+}
+
+queuePathInput.value = readStoredValue(LS_QUEUE_PATH, queuePathInput.value);
+configPathInput.value = readStoredValue(LS_CONFIG_PATH, configPathInput.value);
+queuePathInput.addEventListener('input', () => localStorage.setItem(LS_QUEUE_PATH, queuePathInput.value));
+configPathInput.addEventListener('input', () => localStorage.setItem(LS_CONFIG_PATH, configPathInput.value));
 
 startForm.onsubmit = async (e) => {
   e.preventDefault();
+  localStorage.setItem(LS_QUEUE_PATH, queuePathInput.value);
+  localStorage.setItem(LS_CONFIG_PATH, configPathInput.value);
+
+  const canStart = await validatePaths();
+  if (!canStart) {
+    return;
+  }
+
   const fd = new FormData(startForm);
   const res = await fetch('/api/v1/run/start', {method: 'POST', body: fd});
   if (!res.ok) {
     const payload = await res.json();
+    setError(payload.detail || 'Unable to start');
     runMeta.textContent = payload.detail || 'Unable to start';
   }
 };
@@ -72,7 +139,7 @@ setInterval(async () => {
   const title = status.title || '-';
   const clz = status.clz_index || '-';
   const imdb = status.imdb_id || '-';
-  runMeta.textContent = `Queue: ${document.getElementById('queue-path').value} | Config: ${document.getElementById('config-path').value} | Item ${current}/${total} | ${title} | CLZ ${clz} | IMDb ${imdb}`;
+  runMeta.textContent = `Queue: ${queuePathInput.value} | Config: ${configPathInput.value} | Item ${current}/${total} | ${title} | CLZ ${clz} | IMDb ${imdb}`;
 
   logsBox.textContent = (logs.lines || []).join('\n');
   if (!pauseScroll.checked) {

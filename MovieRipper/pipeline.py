@@ -80,7 +80,7 @@ def process_rip_folder_to_staging(
     """
     - Expects rip_folder to contain MKVs and a .movieripper.job.json
     - Picks keeper
-    - Creates: staging_root\<PlexFolderName>\PlexFileName.mkv
+    - Creates: staging_root/<PlexFolderName>/PlexFileName.mkv
     """
     job = load_job(rip_folder)
     if not job:

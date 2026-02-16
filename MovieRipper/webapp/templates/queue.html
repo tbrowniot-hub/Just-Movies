@@ -54,6 +54,21 @@ const resultsBody = document.getElementById('results-body');
 const queueBody = document.getElementById('queue-body');
 const stats = document.getElementById('index-stats');
 const queueStatus = document.getElementById('queue-status');
+const indexPathInput = document.getElementById('index-path');
+const queueOutInput = document.getElementById('queue-out');
+
+const LS_QUEUE_PATH = 'movieripper.run.queue_path';
+const LS_INDEX_PATH = 'movieripper.queue.index_path';
+
+function readStoredValue(key, fallback) {
+  const value = localStorage.getItem(key);
+  return value && value.trim() ? value : fallback;
+}
+
+indexPathInput.value = readStoredValue(LS_INDEX_PATH, indexPathInput.value);
+queueOutInput.value = readStoredValue(LS_QUEUE_PATH, queueOutInput.value);
+indexPathInput.addEventListener('input', () => localStorage.setItem(LS_INDEX_PATH, indexPathInput.value));
+queueOutInput.addEventListener('input', () => localStorage.setItem(LS_QUEUE_PATH, queueOutInput.value));
 
 function keyFor(item) {
   return String(item.clz_index ?? `imdb:${item.imdb_id ?? item.title}`);
@@ -117,12 +132,13 @@ function renderQueue() {
 }
 
 document.getElementById('load-index').onclick = async () => {
+  localStorage.setItem(LS_INDEX_PATH, indexPathInput.value);
   queueStatus.textContent = '';
   const res = await fetch('/api/v1/index/load', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      path: document.getElementById('index-path').value,
+      path: indexPathInput.value,
       eligible_only: document.getElementById('eligible-only').checked,
     }),
   });
@@ -139,7 +155,8 @@ document.getElementById('load-index').onclick = async () => {
 document.getElementById('search-box').addEventListener('input', renderResults);
 
 document.getElementById('save-queue').onclick = async () => {
-  const outPath = document.getElementById('queue-out').value;
+  const outPath = queueOutInput.value;
+  localStorage.setItem(LS_QUEUE_PATH, outPath);
   const res = await fetch('/api/v1/queue/save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

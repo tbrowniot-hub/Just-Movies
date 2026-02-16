@@ -54,6 +54,15 @@ movieripper config where
 movieripper config init --path ".\config.json"
 ```
 
+## Runtime artifacts (not committed)
+
+These files are generated during local runs and are intentionally gitignored:
+- `MovieRipper/movie_index.json`
+- `MovieRipper/movie_queue.json`
+- Python bytecode (`__pycache__/`, `*.pyc`)
+
+`movie_index.json` and `movie_queue.json` stay at the same default paths used by CLI scripts and the Web UI.
+
 ## Web UI
 
 ```powershell
