@@ -61,3 +61,25 @@ def test_index_load_endpoint(tmp_path):
     assert payload['total'] == 2
     assert payload['eligible_only'] is True
     assert len(payload['items']) == 1
+
+
+def test_run_paths_endpoint(tmp_path):
+    client = TestClient(create_app())
+    queue = tmp_path / 'movie_queue.json'
+    config = tmp_path / 'config.json'
+    queue.write_text('{"items": []}', encoding='utf-8')
+    config.write_text('{}', encoding='utf-8')
+
+    res = client.post(
+        '/api/v1/run/paths',
+        json={
+            'queue_path': str(queue),
+            'config_path': str(config),
+            'index_path': str(tmp_path / 'movie_index.json'),
+        },
+    )
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload['queue_exists'] is True
+    assert payload['config_exists'] is True
+    assert payload['index_exists'] is False
