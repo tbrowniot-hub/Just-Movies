@@ -1,9 +1,62 @@
-<!doctype html><html><body><h2>Import CSV</h2>
-<form id="f" enctype="multipart/form-data">
-<input type="file" name="csv_file" required>
-<input type="text" name="out_path" value="MovieRipper/movie_index.json">
-<button type="submit">Import</button></form>
-<pre id="o"></pre>
+{% extends "_layout.html" %}
+{% block title %}Import · MovieRipper{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Import CLZ MASTEREXPORT</h2>
+  <form id="import-form" enctype="multipart/form-data" class="form-grid">
+    <label>CSV file
+      <input id="csv-file" type="file" name="csv_file" required />
+    </label>
+    <div class="muted" id="selected-file">No file selected</div>
+
+    <label>Output index path
+      <input type="text" name="out_path" value="MovieRipper/movie_index.json" />
+    </label>
+
+    <button type="submit">Run Import</button>
+  </form>
+
+  <div id="import-summary" class="card hidden"></div>
+  <div id="import-error" class="error hidden"></div>
+</section>
+{% endblock %}
+{% block scripts %}
 <script>
-document.getElementById('f').onsubmit=async(e)=>{e.preventDefault();const fd=new FormData(e.target);let r=await fetch('/api/v1/import',{method:'POST',body:fd});document.getElementById('o').textContent=JSON.stringify(await r.json(),null,2)}
-</script></body></html>
+const csvFile = document.getElementById('csv-file');
+const selectedFile = document.getElementById('selected-file');
+const summary = document.getElementById('import-summary');
+const errorBox = document.getElementById('import-error');
+
+csvFile.addEventListener('change', () => {
+  selectedFile.textContent = csvFile.files.length ? `Selected: ${csvFile.files[0].name}` : 'No file selected';
+});
+
+document.getElementById('import-form').onsubmit = async (e) => {
+  e.preventDefault();
+  summary.classList.add('hidden');
+  errorBox.classList.add('hidden');
+
+  const fd = new FormData(e.target);
+  const res = await fetch('/api/v1/import', {method: 'POST', body: fd});
+  const payload = await res.json();
+
+  if (!res.ok) {
+    errorBox.classList.remove('hidden');
+    errorBox.textContent = payload.detail || 'Import failed';
+    return;
+  }
+
+  summary.classList.remove('hidden');
+  summary.innerHTML = `
+    <h3>Import Summary</h3>
+    <p><strong>Output:</strong> <code>${payload.out_path}</code></p>
+    <ul>
+      <li>Total rows: ${payload.total_rows}</li>
+      <li>Eligible rows: ${payload.eligible}</li>
+      <li>Missing IMDb ID: ${payload.missing_imdb_id}</li>
+      <li>Missing CLZ Index: ${payload.missing_clz_index}</li>
+    </ul>
+  `;
+};
+</script>
+{% endblock %}

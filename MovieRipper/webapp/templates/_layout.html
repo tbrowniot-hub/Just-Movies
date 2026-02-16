@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}MovieRipper Web{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container nav-wrap">
+      <h1 class="brand">MovieRipper</h1>
+      <nav>
+        <a href="/" class="nav-link">Home</a>
+        <a href="/import" class="nav-link">Import</a>
+        <a href="/queue" class="nav-link">Queue</a>
+        <a href="/run" class="nav-link">Run</a>
+        <a href="/config" class="nav-link">Config</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="container footer">
+    <span id="footer-version">Loading version…</span>
+  </footer>
+
+  <script>
+    (async () => {
+      try {
+        const version = await (await fetch('/api/v1/version')).json();
+        document.getElementById('footer-version').textContent = `MovieRipper ${version.app_version} · API ${version.api_version}`;
+      } catch (_err) {
+        document.getElementById('footer-version').textContent = 'Version unavailable';
+      }
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

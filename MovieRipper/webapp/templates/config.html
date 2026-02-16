@@ -1,3 +1,8 @@
-<!doctype html><html><body><h2>Config</h2>
-<p>Use API endpoints /api/v1/config/save and /api/v1/config/validate.</p>
-</body></html>
+{% extends "_layout.html" %}
+{% block title %}Config · MovieRipper{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Config API</h2>
+  <p>Use <code>/api/v1/config/save</code> and <code>/api/v1/config/validate</code> from this UI session.</p>
+</section>
+{% endblock %}

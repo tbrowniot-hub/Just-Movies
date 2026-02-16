@@ -46,6 +46,11 @@ class ConfigValidateRequest(BaseModel):
     config_json: dict
 
 
+class IndexLoadRequest(BaseModel):
+    path: str = "MovieRipper/movie_index.json"
+    eligible_only: bool = True
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="MovieRipper Web")
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -175,5 +180,38 @@ def create_app() -> FastAPI:
             "staging_parent_writable": Path(config_json.get("rip_staging_root", ".")).parent.exists(),
         }
         return {"valid": all(checks.values()), "checks": checks}
+
+    @app.post("/api/v1/index/load")
+    def api_index_load(req: IndexLoadRequest):
+        path = Path(req.path)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Index file not found: {path}")
+
+        try:
+            index_data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON in index file: {exc}") from exc
+
+        source_items = index_data.get("items")
+        if source_items is None:
+            source_items = index_data.get("search")
+
+        if not isinstance(source_items, list):
+            raise HTTPException(status_code=422, detail="Index JSON must include list key 'items' or 'search'.")
+
+        total = len(source_items)
+        missing_imdb = len([item for item in source_items if not item.get("imdb_id")])
+
+        if req.eligible_only:
+            source_items = [item for item in source_items if item.get("imdb_id") and item.get("clz_index") is not None]
+
+        return {
+            "path": str(path),
+            "total": total,
+            "eligible_only": req.eligible_only,
+            "items": source_items,
+            "missing_imdb_count": missing_imdb,
+            "loaded_count": len(source_items),
+        }
 
     return app
